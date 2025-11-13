@@ -1,0 +1,95 @@
+from flask import Flask, render_template, jsonify, request
+import json
+import threading
+import numpy as np
+from main import AdvancedOptimalExecution
+
+app = Flask(__name__)
+execution_engine = AdvancedOptimalExecution()
+
+@app.route('/')
+def index():
+    return render_template('dashboard.html')
+
+@app.route('/api/execute', methods=['POST'])
+def execute_order():
+    data = request.json
+    order_size = data.get('order_size', 100000)
+    urgency = data.get('urgency', 0.5)
+    strategy = data.get('strategy', 'adaptive')
+    
+    print(f"🎯 Received execution request: {order_size} shares, urgency {urgency}, strategy {strategy}")
+    
+    try:
+        # Run execution in background thread
+        def run_execution():
+            try:
+                results = execution_engine.execute_large_order(order_size, urgency, strategy)
+                print(f"✅ Execution completed: ${results['total_cost']:,.2f} total cost")
+            except Exception as e:
+                print(f"❌ Execution failed: {e}")
+        
+        thread = threading.Thread(target=run_execution)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            'status': 'execution_started', 
+            'order_size': order_size,
+            'message': 'Execution started successfully'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/analysis')
+def get_analysis():
+    """Return current market analysis"""
+    try:
+        market_conditions = execution_engine.data_feed.get_market_conditions()
+        hidden_liquidity = execution_engine.data_feed.estimate_hidden_liquidity()
+        
+        return jsonify({
+            'market_conditions': market_conditions,
+            'hidden_liquidity': hidden_liquidity,
+            'timestamp': str(np.datetime64('now'))
+        })
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'market_conditions': {},
+            'hidden_liquidity': {}
+        }), 500
+
+@app.route('/api/strategies')
+def get_strategy_comparison():
+    """Compare all strategies - return sample data for now"""
+    try:
+        # Sample strategy comparison data
+        strategies = {
+            'adaptive': {'total_cost': 850, 'cost_per_share': 0.0085, 'completion_time': 45},
+            'vwap': {'total_cost': 1200, 'cost_per_share': 0.0120, 'completion_time': 60},
+            'twap': {'total_cost': 1100, 'cost_per_share': 0.0110, 'completion_time': 60},
+            'implementation_shortfall': {'total_cost': 900, 'cost_per_share': 0.0090, 'completion_time': 30}
+        }
+        return jsonify(strategies)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/health')
+def health_check():
+    """Health check endpoint"""
+    return jsonify({'status': 'healthy', 'service': 'optimal_execution'})
+
+if __name__ == '__main__':
+    print("🚀 Starting Optimal Execution Dashboard...")
+    print("📊 Dashboard available at: http://localhost:5000")
+    print("🔍 API endpoints:")
+    print("   GET  /api/analysis    - Market analysis")
+    print("   POST /api/execute     - Execute order")
+    print("   GET  /api/strategies  - Strategy comparison")
+    print("   GET  /api/health      - Health check")
+    app.run(debug=True, host='0.0.0.0', port=5000)
